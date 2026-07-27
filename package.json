@@ -1,0 +1,25 @@
+{
+  "name": "assignment-02",
+  "version": "1.0.0",
+  "description": "This repo has the code of the first backend CRUD that I created.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arabi-1/BackEnd_CRUD.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/arabi-1/BackEnd_CRUD/issues"
+  },
+  "homepage": "https://github.com/arabi-1/BackEnd_CRUD#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "swagger-ui-express": "^5.0.1"
+  }
+}
