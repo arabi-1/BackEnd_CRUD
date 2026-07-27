@@ -59,17 +59,66 @@ const server = createServer((req, res) => {
             res.end(JSON.stringify(newTask));
         });
     }
-    // Stage 2: GET /tasks/:id (single task or 404)
-    else if (req.method === 'GET' && req.url.startsWith('/tasks/')) {
+    // Stages 2 & 4: GET, PUT, DELETE for a specific task by ID
+    else if (req.url.startsWith('/tasks/')) {
         const id = parseInt(req.url.split('/')[2]);
-        const task = tasks.find(t => t.id === id);
+        const taskIndex = tasks.findIndex(t => t.id === id);
 
-        if (task) {
-            res.writeHead(200);
-            res.end(JSON.stringify(task));
-        } else {
+        // If ID is not found, always return 404
+        if (taskIndex === -1) {
             res.writeHead(404);
-            res.end(JSON.stringify({ "error": `Task ${id} not found` }));
+            return res.end(JSON.stringify({ "error": `Task ${id} not found` }));
+        }
+
+        // GET /tasks/:id
+        if (req.method === 'GET') {
+            res.writeHead(200);
+            res.end(JSON.stringify(tasks[taskIndex]));
+        }
+        // PUT /tasks/:id (Update task)
+        else if (req.method === 'PUT') {
+            let body = '';
+
+            req.on('data', chunk => {
+                body += chunk.toString();
+            });
+
+            req.on('end', () => {
+                let parsedData;
+                try {
+                    parsedData = body ? JSON.parse(body) : {};
+                } catch (err) {
+                    res.writeHead(400);
+                    return res.end(JSON.stringify({ "error": "Invalid JSON format" }));
+                }
+
+                // 400 Bad Request if body is empty
+                if (Object.keys(parsedData).length === 0) {
+                    res.writeHead(400);
+                    return res.end(JSON.stringify({ "error": "Empty or invalid update body" }));
+                }
+
+                // Update fields if they are provided
+                if (parsedData.title !== undefined) {
+                    if (parsedData.title.trim() === '') {
+                        res.writeHead(400);
+                        return res.end(JSON.stringify({ "error": "Title cannot be empty" }));
+                    }
+                    tasks[taskIndex].title = parsedData.title;
+                }
+                if (parsedData.done !== undefined) {
+                    tasks[taskIndex].done = Boolean(parsedData.done);
+                }
+
+                res.writeHead(200);
+                res.end(JSON.stringify(tasks[taskIndex]));
+            });
+        }
+        // DELETE /tasks/:id
+        else if (req.method === 'DELETE') {
+            tasks.splice(taskIndex, 1);
+            res.writeHead(204);
+            res.end(); // 204 No Content requires an empty response body
         }
     }
     // Fallback for missing pages
