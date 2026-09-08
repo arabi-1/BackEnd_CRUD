@@ -1,133 +1,135 @@
-import { createServer } from 'node:http';
+import express from 'express';
+import swaggerUi from 'swagger-ui-express';
+import { readFile } from 'node:fs/promises';
+import Database from 'better-sqlite3';
 
-// 1. In-memory list of tasks
-const tasks = [
-    { id: 1, title: 'Learn Node', done: true },
-    { id: 2, title: 'Build API', done: false },
-    { id: 3, title: 'Push to GitHub', done: false }
-];
+// --- STAGE 0: DATABASE SETUP ---
+const db = new Database('tasks.db');
 
-const server = createServer((req, res) => {
-    res.setHeader('Content-Type', 'application/json');
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY,
+    title TEXT,
+    done INTEGER DEFAULT 0
+  )
+`);
 
-    // Stage 1: Root endpoint
-    if (req.method === 'GET' && req.url === '/') {
-        res.writeHead(200);
-        res.end(JSON.stringify({ "name": "Task API", "version": "1.0", "endpoints": ["/tasks"] }));
-    }
-    // Stage 1: Health endpoint
-    else if (req.method === 'GET' && req.url === '/health') {
-        res.writeHead(200);
-        res.end(JSON.stringify({ "status": "ok" }));
-    }
-    // Stage 2: GET /tasks (all tasks)
-    else if (req.method === 'GET' && req.url === '/tasks') {
-        res.writeHead(200);
-        res.end(JSON.stringify(tasks));
-    }
-    // Stage 3: POST /tasks (Create new task)
-    else if (req.method === 'POST' && req.url === '/tasks') {
-        let body = '';
+const rowCount = db.prepare('SELECT COUNT(*) AS count FROM tasks').get();
+if (rowCount.count === 0) {
+    const insertTask = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
+    insertTask.run('Learn Node', 1);
+    insertTask.run('Build API', 0);
+    insertTask.run('Push to GitHub', 0);
+}
 
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
+// --- EXPRESS & SWAGGER SETUP ---
+const swaggerDocument = JSON.parse(
+    await readFile(new URL('./openapi.json', import.meta.url))
+);
 
-        req.on('end', () => {
-            let parsedData;
-            try {
-                parsedData = body ? JSON.parse(body) : {};
-            } catch (err) {
-                res.writeHead(400);
-                return res.end(JSON.stringify({ "error": "Invalid JSON format" }));
-            }
+const app = express();
+app.use(express.json());
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-            if (!parsedData.title || parsedData.title.trim() === '') {
-                res.writeHead(400);
-                return res.end(JSON.stringify({ "error": "Title is required" }));
-            }
+// --- ENDPOINTS ---
 
-            const newTask = {
-                id: tasks.length > 0 ? tasks[tasks.length - 1].id + 1 : 1,
-                title: parsedData.title,
-                done: false
-            };
+app.get('/', (req, res) => {
+    res.status(200).json({ "name": "Task API", "version": "1.0", "endpoints": ["/tasks", "/docs"] });
+});
 
-            tasks.push(newTask);
+app.get('/health', (req, res) => {
+    res.status(200).json({ "status": "ok" });
+});
 
-            res.writeHead(201);
-            res.end(JSON.stringify(newTask));
-        });
-    }
-    // Stages 2 & 4: GET, PUT, DELETE for a specific task by ID
-    else if (req.url.startsWith('/tasks/')) {
-        const id = parseInt(req.url.split('/')[2]);
-        const taskIndex = tasks.findIndex(t => t.id === id);
+// Stage 1: GET /tasks (all tasks)
+app.get('/tasks', (req, res) => {
+    const allTasks = db.prepare('SELECT * FROM tasks').all();
+    res.status(200).json(allTasks);
+});
 
-        // If ID is not found, always return 404
-        if (taskIndex === -1) {
-            res.writeHead(404);
-            return res.end(JSON.stringify({ "error": `Task ${id} not found` }));
-        }
+// Stage 1: GET /tasks/:id (single task)
+app.get('/tasks/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
 
-        // GET /tasks/:id
-        if (req.method === 'GET') {
-            res.writeHead(200);
-            res.end(JSON.stringify(tasks[taskIndex]));
-        }
-        // PUT /tasks/:id (Update task)
-        else if (req.method === 'PUT') {
-            let body = '';
-
-            req.on('data', chunk => {
-                body += chunk.toString();
-            });
-
-            req.on('end', () => {
-                let parsedData;
-                try {
-                    parsedData = body ? JSON.parse(body) : {};
-                } catch (err) {
-                    res.writeHead(400);
-                    return res.end(JSON.stringify({ "error": "Invalid JSON format" }));
-                }
-
-                // 400 Bad Request if body is empty
-                if (Object.keys(parsedData).length === 0) {
-                    res.writeHead(400);
-                    return res.end(JSON.stringify({ "error": "Empty or invalid update body" }));
-                }
-
-                // Update fields if they are provided
-                if (parsedData.title !== undefined) {
-                    if (parsedData.title.trim() === '') {
-                        res.writeHead(400);
-                        return res.end(JSON.stringify({ "error": "Title cannot be empty" }));
-                    }
-                    tasks[taskIndex].title = parsedData.title;
-                }
-                if (parsedData.done !== undefined) {
-                    tasks[taskIndex].done = Boolean(parsedData.done);
-                }
-
-                res.writeHead(200);
-                res.end(JSON.stringify(tasks[taskIndex]));
-            });
-        }
-        // DELETE /tasks/:id
-        else if (req.method === 'DELETE') {
-            tasks.splice(taskIndex, 1);
-            res.writeHead(204);
-            res.end(); // 204 No Content requires an empty response body
-        }
-    }
-    // Fallback for missing pages
-    else {
-        res.writeHead(404);
-        res.end(JSON.stringify({ "error": "Not Found" }));
+    if (task) {
+        res.status(200).json(task);
+    } else {
+        res.status(404).json({ "error": "Task not found" });
     }
 });
 
-server.listen(3000, '127.0.0.1', () => {
-    console.log('Listening on 127.0.0.1:3000');
+// Stage 2: POST /tasks (Create new task)
+app.post('/tasks', (req, res) => {
+    if (!req.body.title || req.body.title.trim() === '') {
+        return res.status(400).json({ "error": "Title is required" });
+    }
+
+    const insert = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
+    const info = insert.run(req.body.title, 0);
+
+    const newTask = {
+        id: info.lastInsertRowid,
+        title: req.body.title,
+        done: false
+    };
+
+    res.status(201).json(newTask);
+});
+
+// Stage 3: PUT /tasks/:id (Update task)
+app.put('/tasks/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const currentTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+
+    if (!currentTask) {
+        return res.status(404).json({ "error": `Task ${id} not found` });
+    }
+
+    if (Object.keys(req.body).length === 0) {
+        return res.status(400).json({ "error": "Empty or invalid update body" });
+    }
+
+    let newTitle = currentTask.title;
+    let newDone = currentTask.done;
+
+    if (req.body.title !== undefined) {
+        if (req.body.title.trim() === '') {
+            return res.status(400).json({ "error": "Title cannot be empty" });
+        }
+        newTitle = req.body.title;
+    }
+
+    if (req.body.done !== undefined) {
+        newDone = req.body.done ? 1 : 0;
+    }
+
+    db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?').run(newTitle, newDone, id);
+
+    const updatedTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    updatedTask.done = updatedTask.done === 1;
+    res.status(200).json(updatedTask);
+});
+
+// Stage 3: DELETE /tasks/:id (Delete task)
+app.delete('/tasks/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const info = db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+
+    if (info.changes === 0) {
+        return res.status(404).json({ "error": `Task ${id} not found` });
+    }
+
+    res.status(204).send();
+});
+
+// Fallback for missing pages
+app.use((req, res) => {
+    res.status(404).json({ "error": "Not Found" });
+});
+
+// Start the server
+app.listen(3000, '127.0.0.1', () => {
+    console.log('Listening on http://127.0.0.1:3000');
+    console.log('Swagger documentation available at http://127.0.0.1:3000/docs');
 });
