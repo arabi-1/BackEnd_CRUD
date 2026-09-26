@@ -1,11 +1,29 @@
 import { createServer } from 'node:http';
 
-// 1. In-memory list of tasks
-const tasks = [
-    { id: 1, title: 'Learn Node', done: true },
-    { id: 2, title: 'Build API', done: false },
-    { id: 3, title: 'Push to GitHub', done: false }
-];
+
+
+import Database from 'better-sqlite3';
+
+// 1. Open (or create) the SQLite database file
+const db = new Database('tasks.db');
+
+// 2. Create the tasks table if it doesn't already exist
+db.exec(`
+    CREATE TABLE IF NOT EXISTS tasks (
+        id    INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT    NOT NULL,
+        done  INTEGER DEFAULT 0
+    )
+`);
+
+// 3. Seed three example tasks only when the table is empty
+const { 'COUNT(*)': count } = db.prepare('SELECT COUNT(*) FROM tasks').get();
+if (count === 0) {
+    const insert = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
+    insert.run('Learn Node', 1);
+    insert.run('Build API', 0);
+    insert.run('Push to GitHub', 0);
+}
 
 const server = createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json');
