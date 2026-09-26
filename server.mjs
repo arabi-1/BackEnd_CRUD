@@ -4,11 +4,7 @@ import { readFile } from 'node:fs/promises';
 import Database from 'better-sqlite3';
 
 // 1. In-memory list of tasks
-const tasks = [
-    { id: 1, title: 'Learn Node', done: true },
-    { id: 2, title: 'Build API', done: false },
-    { id: 3, title: 'Push to GitHub', done: false }
-];
+
 
 const server = createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json');
