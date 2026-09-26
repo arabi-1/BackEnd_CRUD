@@ -40,8 +40,10 @@ const server = createServer((req, res) => {
     }
     // Stage 2: GET /tasks (all tasks)
     else if (req.method === 'GET' && req.url === '/tasks') {
+        const rows = db.prepare('SELECT * FROM tasks').all();
+        const allTasks = rows.map(row => ({ ...row, done: row.done === 1 }));
         res.writeHead(200);
-        res.end(JSON.stringify(tasks));
+        res.end(JSON.stringify(allTasks));
     }
     // Stage 3: POST /tasks (Create new task)
     else if (req.method === 'POST' && req.url === '/tasks') {
@@ -80,18 +82,16 @@ const server = createServer((req, res) => {
     // Stages 2 & 4: GET, PUT, DELETE for a specific task by ID
     else if (req.url.startsWith('/tasks/')) {
         const id = parseInt(req.url.split('/')[2]);
-        const taskIndex = tasks.findIndex(t => t.id === id);
-
-        // If ID is not found, always return 404
-        if (taskIndex === -1) {
-            res.writeHead(404);
-            return res.end(JSON.stringify({ "error": `Task ${id} not found` }));
-        }
 
         // GET /tasks/:id
         if (req.method === 'GET') {
+            const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+            if (!task) {
+                res.writeHead(404);
+                return res.end(JSON.stringify({ "error": "Task not found" }));
+            }
             res.writeHead(200);
-            res.end(JSON.stringify(tasks[taskIndex]));
+            res.end(JSON.stringify({ ...task, done: task.done === 1 }));
         }
         // PUT /tasks/:id (Update task)
         else if (req.method === 'PUT') {
