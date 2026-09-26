@@ -67,16 +67,11 @@ const server = createServer((req, res) => {
                 return res.end(JSON.stringify({ "error": "Title is required" }));
             }
 
-            const newTask = {
-                id: tasks.length > 0 ? tasks[tasks.length - 1].id + 1 : 1,
-                title: parsedData.title,
-                done: false
-            };
-
-            tasks.push(newTask);
+            const { lastInsertRowid } = db.prepare('INSERT INTO tasks (title, done) VALUES (?, 0)').run(parsedData.title);
+            const newTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(lastInsertRowid);
 
             res.writeHead(201);
-            res.end(JSON.stringify(newTask));
+            res.end(JSON.stringify({ ...newTask, done: newTask.done === 1 }));
         });
     }
     // Stages 2 & 4: GET, PUT, DELETE for a specific task by ID
