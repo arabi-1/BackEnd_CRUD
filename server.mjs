@@ -111,25 +111,37 @@ const server = createServer((req, res) => {
                     return res.end(JSON.stringify({ "error": "Empty or invalid update body" }));
                 }
 
-                // Update fields if they are provided
-                if (parsedData.title !== undefined) {
-                    if (parsedData.title.trim() === '') {
-                        res.writeHead(400);
-                        return res.end(JSON.stringify({ "error": "Title cannot be empty" }));
-                    }
-                    tasks[taskIndex].title = parsedData.title;
-                }
-                if (parsedData.done !== undefined) {
-                    tasks[taskIndex].done = Boolean(parsedData.done);
+                // Validate title if provided
+                if (parsedData.title !== undefined && parsedData.title.trim() === '') {
+                    res.writeHead(400);
+                    return res.end(JSON.stringify({ "error": "Title cannot be empty" }));
                 }
 
+                // 404 if the task doesn't exist
+                const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+                if (!existing) {
+                    res.writeHead(404);
+                    return res.end(JSON.stringify({ "error": "Task not found" }));
+                }
+
+                // Merge incoming fields onto existing values
+                const newTitle = parsedData.title !== undefined ? parsedData.title : existing.title;
+                const newDone = parsedData.done !== undefined ? (parsedData.done ? 1 : 0) : existing.done;
+
+                db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?').run(newTitle, newDone, id);
+
+                const updatedTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
                 res.writeHead(200);
-                res.end(JSON.stringify(tasks[taskIndex]));
+                res.end(JSON.stringify({ ...updatedTask, done: updatedTask.done === 1 }));
             });
         }
         // DELETE /tasks/:id
         else if (req.method === 'DELETE') {
-            tasks.splice(taskIndex, 1);
+            const { changes } = db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+            if (changes === 0) {
+                res.writeHead(404);
+                return res.end(JSON.stringify({ "error": "Task not found" }));
+            }
             res.writeHead(204);
             res.end(); // 204 No Content requires an empty response body
         }
